@@ -265,6 +265,32 @@
         font-weight: 700; color: #1a1205; background: #e0ad3c;
         padding: 3px 7px; border-radius: 999px; font-variant-numeric: tabular-nums;
     }
+
+    /*
+     * Stat changes announce themselves. Watching a game you are not playing,
+     * the change is the news -- a number that has quietly become different
+     * since you last looked is easy to miss entirely.
+     */
+    .kfm-strip__amber.is-up, .kfm-strip__keys.is-up { animation: kfm-up 620ms ease-out; }
+    .kfm-strip__amber.is-down, .kfm-strip__keys.is-down { animation: kfm-down 620ms ease-out; }
+    .kfm-strip__meta.is-up, .kfm-strip__meta.is-down { animation: kfm-meta 520ms ease-out; }
+
+    @keyframes kfm-up {
+        0%   { transform: scale(1); box-shadow: 0 0 0 0 rgb(255 216 122 / .9); }
+        35%  { transform: scale(1.22); box-shadow: 0 0 0 7px rgb(255 216 122 / 0); }
+        100% { transform: scale(1); box-shadow: 0 0 0 0 rgb(255 216 122 / 0); }
+    }
+
+    @keyframes kfm-down {
+        0%   { transform: scale(1); filter: brightness(1); }
+        30%  { transform: scale(.86); filter: brightness(.7); }
+        100% { transform: scale(1); filter: brightness(1); }
+    }
+
+    @keyframes kfm-meta {
+        0%   { color: #ffd479; }
+        100% { color: inherit; }
+    }
     .kfm-strip__keys {
         font-weight: 700; padding: 3px 7px; border-radius: 999px;
         background: #262b3a; font-variant-numeric: tabular-nums;
@@ -301,12 +327,48 @@
         text-transform: uppercase; opacity: .3;
     }
 
+    /*
+     * Turn line and log ticker. Stacked in portrait, where width is the scarce
+     * thing and the ticker needs the whole row to say anything useful; side by
+     * side in landscape, where height is scarce instead and the battlelines
+     * want every pixel back.
+     */
     .kfm-centre {
         flex: 0 0 auto;
-        display: flex; align-items: center; justify-content: center;
-        height: 22px;
-        font-size: 11px; letter-spacing: .06em; opacity: .75;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 1px; padding: 3px 10px;
+        font-size: 11px; letter-spacing: .06em;
         background: linear-gradient(to right, transparent, #1a1f2b, transparent);
+        /* Children ellipsize rather than push this wider. */
+        min-width: 0;
+    }
+
+    .kfm-centre__turn {
+        opacity: .8; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+    }
+
+    .kfm-centre__ticker {
+        max-width: 100%;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        font-size: 10.5px; opacity: .58;
+    }
+
+    /* A new line arrives rather than silently replacing the last one. */
+    .kfm-centre__ticker.is-new { animation: kfm-tick 420ms ease-out; }
+
+    @keyframes kfm-tick {
+        from { opacity: 0; transform: translateY(4px); }
+        to   { opacity: .58; transform: none; }
+    }
+
+    @media (orientation: landscape) {
+        .kfm-centre {
+            flex-direction: row; gap: 10px;
+            height: 20px; padding-block: 0;
+        }
+        .kfm-centre__turn { flex: 0 0 auto; }
+        .kfm-centre__ticker { flex: 1 1 auto; min-width: 0; text-align: left; }
     }
 
     /* Cards: half-size art with the state a spectator needs on top of it. */
@@ -444,6 +506,10 @@
 
     @media (prefers-reduced-motion: reduce) {
         .kfm-drawer, .kfm-scrim, .kfm-card { transition: none; }
+        .kfm-centre__ticker.is-new,
+        .kfm-strip__amber.is-up, .kfm-strip__amber.is-down,
+        .kfm-strip__keys.is-up, .kfm-strip__keys.is-down,
+        .kfm-strip__meta.is-up, .kfm-strip__meta.is-down { animation: none; }
     }
     `;
 
@@ -468,7 +534,10 @@
             <div class="kfm-strip" data-strip="top"></div>
             <div class="kfm-field">
                 <div class="kfm-line" data-line="top"></div>
-                <div class="kfm-centre"><span data-centre></span></div>
+                <div class="kfm-centre">
+                    <span class="kfm-centre__turn" data-centre></span>
+                    <span class="kfm-centre__ticker" data-ticker></span>
+                </div>
                 <div class="kfm-line" data-line="bottom"></div>
             </div>
             <div class="kfm-strip" data-strip="bottom"></div>
@@ -502,6 +571,7 @@
     const strips = { top: q('[data-strip="top"]'), bottom: q('[data-strip="bottom"]') };
     const lines = { top: q('[data-line="top"]'), bottom: q('[data-line="bottom"]') };
     const centreEl = q('[data-centre]');
+    const tickerEl = q('[data-ticker]');
     const logEl = q('[data-log]');
     const pilesEl = q('[data-piles]');
     const scrim = q('[data-scrim]');
@@ -733,31 +803,87 @@
         }
     }
 
+    /*
+     * Restart a CSS animation on an element that may already be mid-animation.
+     * Removing the class is not enough on its own -- the browser coalesces the
+     * remove and re-add into no change at all -- so a reflow is forced between
+     * them.
+     */
+    function flash(node, className) {
+        node.classList.remove(className);
+        void node.offsetWidth;
+        node.classList.add(className);
+    }
+
+    /*
+     * A number that reacts when it changes.
+     *
+     * Watching a game you did not play means the interesting thing is usually
+     * the *change*: amber going up, a key being forged. A number that silently
+     * differs from the one you last looked at is easy to miss, so a change
+     * pulses, and gains and losses pulse differently.
+     */
+    function setStat(node, value) {
+        const next = String(value);
+
+        if (node._value === next) {
+            return;
+        }
+
+        const previous = node._value;
+        node._value = next;
+        node.textContent = next;
+
+        if (previous === undefined) {
+            return;
+        }
+
+        const before = parseFloat(previous);
+        const after = parseFloat(next);
+        const rising = Number.isFinite(before) && Number.isFinite(after) && after > before;
+
+        flash(node, rising ? 'is-up' : 'is-down');
+    }
+
+    // Built once per strip, then updated in place. Rebuilding the markup every
+    // render would throw away the previous values the animations compare with.
+    function stripParts(node) {
+        if (node._parts) {
+            return node._parts;
+        }
+
+        const name = el('span', 'kfm-strip__name');
+        const amber = el('span', 'kfm-strip__amber');
+        const keys = el('span', 'kfm-strip__keys');
+        const meta = el('span', 'kfm-strip__meta');
+
+        node.append(name, amber, keys, meta);
+        node._parts = { name, amber, keys, meta };
+        return node._parts;
+    }
+
     function stripFor(node, player, label) {
         const stats = player.stats || {};
         const piles = player.cardPiles || {};
         const keys = stats.keys || {};
         const forged = ['red', 'blue', 'yellow'].filter((colour) => keys[colour]).length;
+        const parts = stripParts(node);
 
-        node.innerHTML = '';
         node.classList.toggle('is-active', !!player.activePlayer);
 
-        const name = el('span', 'kfm-strip__name', player.name || label);
-        const amber = el('span', 'kfm-strip__amber');
-        amber.textContent = `${stats.amber || 0}/${stats.keyCost != null ? stats.keyCost : 6}`;
+        parts.name.textContent = player.name || label;
 
-        const keyEl = el('span', 'kfm-strip__keys', `${forged}/3`);
-        keyEl.classList.toggle('is-close', (stats.amber || 0) >= (stats.keyCost || 6));
+        setStat(parts.amber, `${stats.amber || 0}/${stats.keyCost != null ? stats.keyCost : 6}`);
+        setStat(parts.keys, `${forged}/3`);
 
-        const meta = el(
-            'span',
-            'kfm-strip__meta',
+        parts.keys.classList.toggle('is-close', (stats.amber || 0) >= (stats.keyCost || 6));
+
+        setStat(
+            parts.meta,
             `${house(player.activeHouse)} · hand ${(piles.hand || []).length} · deck ${
                 player.numDeckCards || 0
             } · disc ${(piles.discard || []).length}${stats.chains ? ` · chains ${stats.chains}` : ''}`
         );
-
-        node.append(name, amber, keyEl, meta);
     }
 
     function renderLog(game) {
@@ -892,6 +1018,25 @@
             : active
               ? `${active.name} · ${active.phase || ''}`.trim()
               : '';
+
+        /*
+         * The newest log line, as a ticker.
+         *
+         * The drawer holds the full log, but a spectator should not have to open
+         * it to notice that something just happened. Truncation is left to CSS
+         * so it fits whatever width it is given rather than a guessed character
+         * count -- which is the whole difficulty on a phone.
+         */
+        const latest = [...(game.messages || [])]
+            .reverse()
+            .map((entry) => formatFragment(entry.message).trim())
+            .find(Boolean);
+
+        if (latest && latest !== tickerEl._value) {
+            tickerEl._value = latest;
+            tickerEl.textContent = latest;
+            flash(tickerEl, 'is-new');
+        }
 
         renderLog(game);
         renderPiles(game, order);
