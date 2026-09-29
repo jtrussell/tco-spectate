@@ -503,8 +503,14 @@
 
     .kfm-card__stats {
         flex: 0 0 auto;
+        display: flex; align-items: baseline; gap: 3px;
         font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums;
     }
+
+    /* Damage is the thing you scan a board for, so it gets the only red on the
+       card that is not an error state. */
+    .kfm-card__damage { color: #ff6f61; }
+    .kfm-card__damage[hidden] { display: none; }
     .kfm-card__stats[hidden] { display: none; }
 
     .kfm-card__flags {
@@ -842,7 +848,10 @@
                 <div class="kfm-card__footer">
                     <span class="kfm-card__name"></span>
                     <div class="kfm-card__line">
-                        <span class="kfm-card__stats"></span>
+                        <span class="kfm-card__stats"
+                            ><span class="kfm-card__power"></span
+                            ><span class="kfm-card__damage"></span
+                        ></span>
                         <span class="kfm-card__flags"></span>
                     </div>
                 </div>
@@ -870,9 +879,27 @@
         amberEl.textContent = amber ? amber : '';
         amberEl.hidden = !amber;
 
+        /*
+         * Power first, then armour after a slash -- the way a creature is
+         * actually spoken about ("a 5/2"). Damage is a separate red number in
+         * brackets rather than being folded into the first figure: showing
+         * remaining-over-total meant a damaged 4-power creature read as "3/4",
+         * which is the same shape as the power/armour notation and says
+         * something close to the opposite of what it means.
+         *
+         * Armour is what is left this turn, not what is printed, since that is
+         * the number that decides whether the next hit lands.
+         */
         const stats = tile.querySelector('.kfm-card__stats');
+
         if (card.type === 'creature') {
-            stats.textContent = `${Math.max(0, power - damage)}/${power}${armour ? ` ◈${armour}` : ''}`;
+            const damageEl = tile.querySelector('.kfm-card__damage');
+
+            tile.querySelector('.kfm-card__power').textContent = armour
+                ? `${power}/${armour}`
+                : `${power}`;
+            damageEl.textContent = damage ? `(${damage})` : '';
+            damageEl.hidden = !damage;
             stats.hidden = false;
         } else {
             stats.hidden = true;
