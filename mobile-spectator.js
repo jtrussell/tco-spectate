@@ -255,11 +255,18 @@
         flex: 0 0 auto;
         display: flex; align-items: center; gap: 8px;
         padding: 7px 10px;
+        min-width: 0;
         background: #141821;
         border-block: 1px solid #232838;
         font-size: 12px; line-height: 1;
     }
     .kfm-strip.is-active { background: #1d2130; box-shadow: inset 3px 0 0 #d9a33a; }
+
+    /* Keep the top strip's contents clear of the close button floating over it
+       rather than letting the two collide. */
+    .kfm-strip[data-strip="top"] { padding-right: 46px; }
+
+    .kfm-strip__name.is-gone { color: #e2584c; text-decoration: line-through; }
     .kfm-strip__name {
         font-weight: 700; font-size: 13px;
         max-width: 28%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -303,9 +310,11 @@
     .kfm-strip__keys.is-close { box-shadow: 0 0 0 1.5px #d9a33a; }
 
     .kfm-key {
-        width: 11px; height: 11px; border-radius: 50%;
-        border: 1.6px solid currentColor; box-sizing: border-box;
-        opacity: .45;
+        width: 12px; height: 12px; border-radius: 50%;
+        /* A thin ring reads as a smudge at this size on a phone; the stroke has
+           to carry the unforged state on its own. */
+        border: 2.5px solid currentColor; box-sizing: border-box;
+        opacity: .62;
         transition: opacity 200ms ease, background-color 200ms ease;
     }
     .kfm-key--red { color: #e2584c; }
@@ -328,6 +337,26 @@
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
 
+    .kfm-offline {
+        flex: 0 0 auto;
+        display: flex; align-items: center; justify-content: center; gap: 7px;
+        padding: 6px 10px;
+        background: #4a1f1c; color: #ffc9c2;
+        font-size: 12px; font-weight: 600; letter-spacing: .04em;
+    }
+    .kfm-offline[hidden] { display: none; }
+
+    .kfm-offline__dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: #e2584c;
+        animation: kfm-pulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes kfm-pulse {
+        0%, 100% { opacity: 1; }
+        50%      { opacity: .25; }
+    }
+
     /* The battlefield takes everything that is left. */
     .kfm-field {
         flex: 1 1 auto; min-height: 0;
@@ -341,7 +370,7 @@
      */
     .kfm-line {
         flex: 1 1 50%; min-height: 0;
-        display: flex; align-items: center; gap: 6px;
+        display: flex; align-items: center; justify-content: flex-start; gap: 6px;
         padding: 8px 10px;
         overflow-x: auto; overflow-y: hidden;
         touch-action: pan-x;
@@ -349,6 +378,22 @@
         -webkit-overflow-scrolling: touch;
     }
     .kfm-line::-webkit-scrollbar { display: none; }
+    /*
+     * Pushes artifacts to the right. It takes all the spare room, so with a
+     * light board the two groups sit against opposite edges; once the row
+     * overflows there is no spare room left and it collapses to min-width,
+     * which is what keeps a visible gap while scrolling.
+     *
+     * The hairline is drawn centred by the background rather than by the box,
+     * so it stays a hairline at any width.
+     */
+    .kfm-line__gap {
+        flex: 1 1 auto; align-self: stretch;
+        min-width: 26px;
+        background: linear-gradient(transparent, #33394a 22%, #33394a 78%, transparent)
+            center / 1px 100% no-repeat;
+    }
+
     .kfm-line__empty {
         margin: auto; font-size: 11px; letter-spacing: .08em;
         text-transform: uppercase; opacity: .3;
@@ -458,8 +503,13 @@
         background: #1b2030; color: #9aa0b4;
         opacity: .85;
     }
-    .kfm-handle--left { left: 0; border-radius: 0 6px 6px 0; }
-    .kfm-handle--right { right: 0; border-radius: 6px 0 0 6px; transform: translateY(-50%) rotate(180deg); }
+    /* Off the vertical centre on purpose: the turn line and log ticker sit
+       there, and a handle parked on top of them is unreadable. */
+    .kfm-handle--left { left: 0; top: 32%; border-radius: 0 6px 6px 0; }
+    .kfm-handle--right {
+        right: 0; top: 68%; border-radius: 6px 0 0 6px;
+        transform: translateY(-50%) rotate(180deg);
+    }
 
     .kfm-drawer {
         position: absolute; top: 0; bottom: 0;
@@ -533,6 +583,7 @@
 
     @media (prefers-reduced-motion: reduce) {
         .kfm-drawer, .kfm-scrim, .kfm-card, .kfm-key { transition: none; }
+        .kfm-offline__dot,
         .kfm-centre__ticker.is-new,
         .kfm-strip__amber.is-up, .kfm-strip__amber.is-down,
         .kfm-key.is-forging,
@@ -558,6 +609,9 @@
         root.id = 'kfm-root';
         root.hidden = true;
         root.innerHTML = `
+            <div class="kfm-offline" data-offline hidden>
+                <span class="kfm-offline__dot"></span><span data-offline-text></span>
+            </div>
             <div class="kfm-strip" data-strip="top"></div>
             <div class="kfm-field">
                 <div class="kfm-line" data-line="top"></div>
@@ -598,6 +652,8 @@
     const strips = { top: q('[data-strip="top"]'), bottom: q('[data-strip="bottom"]') };
     const lines = { top: q('[data-line="top"]'), bottom: q('[data-line="bottom"]') };
     const centreEl = q('[data-centre]');
+    const offlineEl = q('[data-offline]');
+    const offlineTextEl = q('[data-offline-text]');
     const tickerEl = q('[data-ticker]');
     const logEl = q('[data-log]');
     const pilesEl = q('[data-piles]');
@@ -812,21 +868,44 @@
         return tile;
     }
 
-    // Reuse tiles and reorder in place; only touch the DOM where it differs.
-    function syncLine(container, cards) {
-        const wanted = cards.map(cardTile);
+    // One cached node per container each, so reconciliation sees stable
+    // identities instead of a fresh element on every render.
+    function lineExtra(container, key, className, text) {
+        const cache = (container._extras = container._extras || {});
+        if (!cache[key]) cache[key] = el('span', className, text);
+        return cache[key];
+    }
 
-        wanted.forEach((tile, index) => {
+    /*
+     * Reuse tiles and reorder in place; only touch the DOM where it differs.
+     *
+     * Creatures left, artifacts right, with a spacer between them that grows
+     * into whatever room is spare. The spacer is always present when there is
+     * anything to show, so the two groups sit on their own sides even when one
+     * of them is empty -- otherwise a board with no artifacts would centre its
+     * creatures and the row would appear to shift as artifacts come and go.
+     *
+     * Once the row overflows there is no spare room, the spacer falls back to
+     * its min-width, and the two groups stay visibly apart while scrolling.
+     */
+    function syncLine(container, creatures, artifacts) {
+        const wanted = [];
+
+        if (!creatures.length && !artifacts.length) {
+            wanted.push(lineExtra(container, 'empty', 'kfm-line__empty', 'no cards in play'));
+        } else {
+            wanted.push(...creatures.map(cardTile));
+            wanted.push(lineExtra(container, 'gap', 'kfm-line__gap'));
+            wanted.push(...artifacts.map(cardTile));
+        }
+
+        wanted.forEach((node, index) => {
             const current = container.children[index];
-            if (current !== tile) container.insertBefore(tile, current || null);
+            if (current !== node) container.insertBefore(node, current || null);
         });
 
         while (container.children.length > wanted.length) {
             container.lastElementChild.remove();
-        }
-
-        if (!wanted.length) {
-            container.appendChild(el('span', 'kfm-line__empty', 'no cards in play'));
         }
     }
 
@@ -940,6 +1019,11 @@
                 player.numDeckCards || 0
             } · disc ${(piles.discard || []).length}${stats.chains ? ` · chains ${stats.chains}` : ''}`
         );
+
+        // A player dropping is different from the spectator dropping, and the
+        // strip is where you are already looking for that player.
+        parts.name.classList.toggle('is-gone', !!player.disconnected);
+        parts.name.title = player.disconnected ? 'disconnected' : '';
     }
 
     function renderLog(game) {
@@ -1011,6 +1095,25 @@
 
         const appState = store.getState();
         const game = appState.lobby && appState.lobby.currentGame;
+
+        /*
+         * A dropped socket is the one failure that looks exactly like a quiet
+         * game: the board simply stops changing, and a spectator has no way to
+         * tell "nothing is happening" from "I am no longer being told what is
+         * happening". So it gets a banner rather than a subtle cue.
+         *
+         * `connected` is undefined until the first connect, which is not a
+         * disconnection -- only treat an explicit false as offline.
+         */
+        const games = appState.games || {};
+        const offline = games.connected === false;
+
+        offlineEl.hidden = !offline;
+        if (offline) {
+            offlineTextEl.textContent = games.connecting
+                ? 'reconnecting to the game...'
+                : 'disconnected from the game';
+        }
         const myName =
             appState.account && appState.account.user ? appState.account.user.username : undefined;
 
@@ -1065,8 +1168,8 @@
         const topSplit = split(top);
         const bottomSplit = split(bottom);
 
-        syncLine(lines.top, [...topSplit.rest, ...topSplit.creatures]);
-        syncLine(lines.bottom, [...bottomSplit.creatures, ...bottomSplit.rest]);
+        syncLine(lines.top, topSplit.creatures, topSplit.rest);
+        syncLine(lines.bottom, bottomSplit.creatures, bottomSplit.rest);
 
         const active = order.find((player) => player.activePlayer);
         centreEl.textContent = game.winner
