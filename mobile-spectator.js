@@ -408,7 +408,11 @@
     .kfm-centre {
         flex: 0 0 auto;
         display: flex; flex-direction: column; align-items: center; justify-content: center;
-        gap: 1px; padding: 3px 10px;
+        gap: 1px;
+        /* The drawer handles sit centred on both edges, roughly 17px wide.
+           This keeps the turn line and ticker clear of them rather than moving
+           the handles somewhere less findable. */
+        padding: 3px 26px;
         font-size: 11px; letter-spacing: .06em;
         background: linear-gradient(to right, transparent, #1a1f2b, transparent);
         /* Children ellipsize rather than push this wider. */
@@ -503,11 +507,9 @@
         background: #1b2030; color: #9aa0b4;
         opacity: .85;
     }
-    /* Off the vertical centre on purpose: the turn line and log ticker sit
-       there, and a handle parked on top of them is unreadable. */
-    .kfm-handle--left { left: 0; top: 32%; border-radius: 0 6px 6px 0; }
+    .kfm-handle--left { left: 0; border-radius: 0 6px 6px 0; }
     .kfm-handle--right {
-        right: 0; top: 68%; border-radius: 6px 0 0 6px;
+        right: 0; border-radius: 6px 0 0 6px;
         transform: translateY(-50%) rotate(180deg);
     }
 
