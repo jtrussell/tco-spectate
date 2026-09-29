@@ -45,6 +45,9 @@
     // ...and travel this far before it opens.
     const DRAWER_OPEN_PX = 60;
 
+    // Fixed order, so position alone identifies a key even at a glance.
+    const KEY_COLOURS = ['red', 'blue', 'yellow'];
+
     const HOUSE_ABBREV = {
         brobnar: 'BRO',
         dis: 'DIS',
@@ -271,8 +274,8 @@
      * the change is the news -- a number that has quietly become different
      * since you last looked is easy to miss entirely.
      */
-    .kfm-strip__amber.is-up, .kfm-strip__keys.is-up { animation: kfm-up 620ms ease-out; }
-    .kfm-strip__amber.is-down, .kfm-strip__keys.is-down { animation: kfm-down 620ms ease-out; }
+    .kfm-strip__amber.is-up { animation: kfm-up 620ms ease-out; }
+    .kfm-strip__amber.is-down { animation: kfm-down 620ms ease-out; }
     .kfm-strip__meta.is-up, .kfm-strip__meta.is-down { animation: kfm-meta 520ms ease-out; }
 
     @keyframes kfm-up {
@@ -292,10 +295,34 @@
         100% { color: inherit; }
     }
     .kfm-strip__keys {
-        font-weight: 700; padding: 3px 7px; border-radius: 999px;
-        background: #262b3a; font-variant-numeric: tabular-nums;
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 4px 7px; border-radius: 999px; background: #262b3a;
     }
-    .kfm-strip__keys.is-close { background: #d9a33a; color: #1a1205; }
+    /* Enough amber to forge: hint at the container rather than recolour the
+       dots, whose colours have to stay literal. */
+    .kfm-strip__keys.is-close { box-shadow: 0 0 0 1.5px #d9a33a; }
+
+    .kfm-key {
+        width: 11px; height: 11px; border-radius: 50%;
+        border: 1.6px solid currentColor; box-sizing: border-box;
+        opacity: .45;
+        transition: opacity 200ms ease, background-color 200ms ease;
+    }
+    .kfm-key--red { color: #e2584c; }
+    .kfm-key--blue { color: #4d8fe0; }
+    .kfm-key--yellow { color: #e8c04a; }
+
+    /* Filled means forged; hollow means not. The distinction survives without
+       colour, which the three-way colour coding on its own would not. */
+    .kfm-key.is-forged { background-color: currentColor; opacity: 1; }
+
+    .kfm-key.is-forging { animation: kfm-forge 700ms cubic-bezier(.2, .8, .2, 1); }
+
+    @keyframes kfm-forge {
+        0%   { transform: scale(2.4); box-shadow: 0 0 0 0 currentColor; }
+        45%  { transform: scale(1.18); }
+        100% { transform: scale(1); box-shadow: 0 0 0 7px rgb(0 0 0 / 0); }
+    }
     .kfm-strip__meta {
         margin-inline-start: auto; opacity: .72; font-size: 11px;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -505,10 +532,10 @@
     .kfm-zoom img { max-width: 100%; max-height: 100%; border-radius: 12px; }
 
     @media (prefers-reduced-motion: reduce) {
-        .kfm-drawer, .kfm-scrim, .kfm-card { transition: none; }
+        .kfm-drawer, .kfm-scrim, .kfm-card, .kfm-key { transition: none; }
         .kfm-centre__ticker.is-new,
         .kfm-strip__amber.is-up, .kfm-strip__amber.is-down,
-        .kfm-strip__keys.is-up, .kfm-strip__keys.is-down,
+        .kfm-key.is-forging,
         .kfm-strip__meta.is-up, .kfm-strip__meta.is-down { animation: none; }
     }
     `;
@@ -855,6 +882,11 @@
         const name = el('span', 'kfm-strip__name');
         const amber = el('span', 'kfm-strip__amber');
         const keys = el('span', 'kfm-strip__keys');
+        keys._dots = KEY_COLOURS.map((colour) => {
+            const dot = el('span', `kfm-key kfm-key--${colour}`);
+            keys.appendChild(dot);
+            return dot;
+        });
         const meta = el('span', 'kfm-strip__meta');
 
         node.append(name, amber, keys, meta);
@@ -874,8 +906,32 @@
         parts.name.textContent = player.name || label;
 
         setStat(parts.amber, `${stats.amber || 0}/${stats.keyCost != null ? stats.keyCost : 6}`);
-        setStat(parts.keys, `${forged}/3`);
 
+        /*
+         * Three dots rather than a count: which keys are forged is read faster
+         * as shape and colour than as "2/3", and filled-versus-hollow carries
+         * it without relying on colour alone.
+         */
+        KEY_COLOURS.forEach((colour, index) => {
+            const dot = parts.keys._dots[index];
+            const isForged = !!keys[colour];
+
+            if (dot._forged === isForged) {
+                return;
+            }
+
+            const known = dot._forged !== undefined;
+            dot._forged = isForged;
+            dot.classList.toggle('is-forged', isForged);
+
+            // Forging a key is the game's biggest moment; do not let it happen
+            // silently. Only on the transition, never on first paint.
+            if (isForged && known) {
+                flash(dot, 'is-forging');
+            }
+        });
+
+        parts.keys.title = `${forged} of 3 keys forged`;
         parts.keys.classList.toggle('is-close', (stats.amber || 0) >= (stats.keyCost || 6));
 
         setStat(
