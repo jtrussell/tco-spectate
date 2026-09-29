@@ -477,25 +477,43 @@
         font-size: 10px; font-weight: 800;
         background: #e0ad3c; color: #1a1205;
     }
+    /*
+     * Name above, numbers below, stacked by the layout rather than by pinning
+     * each label to a guessed offset from the bottom. The previous version put
+     * the name at a fixed 15px, which is less than the height the stats row
+     * actually takes, so the two always overlapped -- and would have again at
+     * any other font size or card scale.
+     */
+    .kfm-card__footer {
+        position: absolute; left: 0; right: 0; bottom: 0;
+        display: flex; flex-direction: column;
+        background: linear-gradient(transparent, rgb(0 0 0 / .8) 45%);
+        padding: 6px 4px 2px;
+    }
+
     .kfm-card__name {
-        position: absolute; left: 0; right: 0; bottom: 15px;
-        padding: 1px 4px;
-        font-size: 9px; line-height: 1.2;
-        background: rgb(0 0 0 / .62);
+        font-size: 9px; line-height: 1.25;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+
+    .kfm-card__line {
+        display: flex; align-items: baseline; justify-content: space-between;
+        gap: 4px; min-width: 0;
+    }
+
     .kfm-card__stats {
-        position: absolute; left: 0; bottom: 0;
-        padding: 2px 5px;
+        flex: 0 0 auto;
         font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums;
-        background: rgb(0 0 0 / .74);
     }
+    .kfm-card__stats[hidden] { display: none; }
+
     .kfm-card__flags {
-        position: absolute; right: 0; bottom: 0;
-        padding: 2px 5px;
+        flex: 0 1 auto; min-width: 0;
         font-size: 9px; font-weight: 700; letter-spacing: .04em;
-        color: #ffd479; background: rgb(0 0 0 / .74);
+        color: #ffd479;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    .kfm-card__flags[hidden] { display: none; }
 
     /* Edge handles: swipe is not discoverable, so show where the drawers are. */
     .kfm-handle {
@@ -821,9 +839,13 @@
                 <img alt="" loading="lazy">
                 <span class="kfm-card__house"></span>
                 <span class="kfm-card__amber"></span>
-                <span class="kfm-card__name"></span>
-                <span class="kfm-card__stats"></span>
-                <span class="kfm-card__flags"></span>
+                <div class="kfm-card__footer">
+                    <span class="kfm-card__name"></span>
+                    <div class="kfm-card__line">
+                        <span class="kfm-card__stats"></span>
+                        <span class="kfm-card__flags"></span>
+                    </div>
+                </div>
             `;
             tile.addEventListener('click', () => showZoom(tile._card));
             tiles.set(card.uuid, tile);
@@ -862,7 +884,9 @@
         if (card.taunt) flags.push('TNT');
         if (tokens.enrage || card.enraged) flags.push('RGE');
         if ((card.upgrades || []).length) flags.push(`+${card.upgrades.length}`);
-        tile.querySelector('.kfm-card__flags').textContent = flags.join(' ');
+        const flagsEl = tile.querySelector('.kfm-card__flags');
+        flagsEl.textContent = flags.join(' ');
+        flagsEl.hidden = !flags.length;
 
         tile.classList.toggle('is-exhausted', !!card.exhausted);
         tile.classList.toggle('is-damaged', damage > 0);
